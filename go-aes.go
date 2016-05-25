@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"fmt"
 	"crypto/md5"
+	"bytes"
 )
 
 func Encrypt(bytes []byte, key string) ([]byte, error) {
@@ -12,8 +13,14 @@ func Encrypt(bytes []byte, key string) ([]byte, error) {
 	block, _ := aes.NewCipher(derivatedKey.key)
 
 	cbc := cipher.NewCBCEncrypter(block, derivatedKey.iv)
-	cbc.CryptBlocks(bytes, bytes)
-	return pkcs7Unpad(bytes, aes.BlockSize)
+
+	paddedMessage, err := pkcs7Pad(bytes, aes.BlockSize)
+	if err != nil {
+		return nil, err
+	}
+
+	cbc.CryptBlocks(paddedMessage, paddedMessage)
+	return paddedMessage, nil
 }
 
 func Decrypt(bytes []byte, key string) ([]byte, error) {
@@ -47,6 +54,19 @@ func derivateKey(password, salt []byte) (openSSLCreds, error) {
 		copy(m[i * 16:], prev)
 	}
 	return openSSLCreds{key: m[:32], iv: m[32:]}, nil
+}
+
+func pkcs7Pad(data []byte, blocklen int) ([]byte, error) {
+	if blocklen <= 0 {
+		return nil, fmt.Errorf("invalid blocklen %d", blocklen)
+	}
+	padlen := 1
+	for ((len(data) + padlen) % blocklen) != 0 {
+		padlen = padlen + 1
+	}
+
+	pad := bytes.Repeat([]byte{byte(padlen)}, padlen)
+	return append(data, pad...), nil
 }
 
 /*
